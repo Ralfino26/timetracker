@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import TimetrackerCore
 
@@ -5,6 +6,7 @@ struct ContentView: View {
     @EnvironmentObject private var store: EntryStore
     @ObservedObject private var timerManager = TimerManager.shared
 
+    @Environment(\.openWindow) private var openWindow
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @Namespace private var glassNamespace
@@ -60,10 +62,24 @@ struct ContentView: View {
     }
 
     private var header: some View {
-        Text("TimeTracker")
-            .font(.headline)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        HStack(spacing: 8) {
+            Text("TimeTracker")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+
+            Spacer(minLength: 0)
+
+            Button {
+                openHistory()
+            } label: {
+                Image(systemName: "calendar")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.circle)
+            .help("Show history")
+            .accessibilityLabel("Show history")
+        }
     }
 
     private var clock: some View {
@@ -208,6 +224,10 @@ struct ContentView: View {
         }
     }
 
+    private func openHistory() {
+        openWindow(id: "history")
+        NSApp.activate()
+    }
 
     private func rangeSummary(from start: Date, to end: Date) -> String {
         let clock = DurationFormat.clock(end.timeIntervalSince(start))

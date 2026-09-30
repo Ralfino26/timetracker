@@ -23,5 +23,12 @@ struct TimetrackerApp: App {
                 .contentTransition(.symbolEffect(.replace))
         }
         .menuBarExtraStyle(.window)
+
+        Window("History", id: "history") {
+            HistoryView()
+                .environmentObject(store)
+        }
+        .defaultSize(width: 820, height: 520)
+        .windowResizability(.contentMinSize)
     }
 }
