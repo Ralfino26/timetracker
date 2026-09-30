@@ -1,8 +1,10 @@
+import AppKit
 import SwiftUI
 import TimetrackerCore
 
 @main
 struct TimetrackerApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @ObservedObject private var timerManager = TimerManager.shared
     @StateObject private var store = EntryStore()
 
@@ -31,5 +33,11 @@ struct TimetrackerApp: App {
         }
         .defaultSize(width: 820, height: 520)
         .windowResizability(.contentMinSize)
+    }
+}
+
+private final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        LaunchAtLogin.enableOnFirstLaunchIfNeeded()
     }
 }
