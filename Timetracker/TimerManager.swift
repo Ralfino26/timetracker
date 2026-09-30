@@ -1,61 +1,75 @@
-import Foundation
 import Combine
+import Foundation
+import TimetrackerCore
 
-class TimerManager: ObservableObject, Identifiable {
+/// Drives `TimerSession` from the UI: owns the tick timer and publishes the clock.
+@MainActor
+final class TimerManager: ObservableObject {
     static let shared = TimerManager()
 
-    let id = UUID()
-    @Published var isRunning = false
-    @Published var elapsedSeconds: TimeInterval = 0
+    @Published private(set) var session = TimerSession()
+    @Published private(set) var elapsedSeconds: TimeInterval = 0
 
-    private var startDate: Date?
-    private var accumulatedSeconds: TimeInterval = 0
-    private var timer: Timer?
+    private var ticker: Timer?
 
-    init() {}
+    var isRunning: Bool { session.isRunning }
+    var isLogging: Bool { session.isLogging }
+    var formattedTime: String { DurationFormat.clock(elapsedSeconds) }
 
-    func start() {
-        guard !isRunning else { return }
-        isRunning = true
-        startDate = Date()
-        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+    var pendingRange: (start: Date, end: Date)? { session.pendingRange }
+
+    func start(at date: Date = Date()) {
+        guard session.start(at: date) else { return }
+        elapsedSeconds = 0
+        startTicker()
+    }
+
+    func stop(at date: Date = Date()) {
+        guard session.stop(at: date) else { return }
+        stopTicker()
+        elapsedSeconds = session.elapsed(at: date)
+    }
+
+    /// Note saved — back to idle with a clean clock.
+    func finishLogging() {
+        resetToIdle()
+    }
+
+    /// Note abandoned — the range is dropped.
+    func discard() {
+        resetToIdle()
+    }
+
+    func makeEntry(note: String) -> WorkEntry? {
+        session.makeEntry(note: note)
+    }
+
+    private func resetToIdle() {
+        stopTicker()
+        session.discard()
+        elapsedSeconds = 0
+    }
+
+    private func startTicker() {
+        stopTicker()
+        let timer = Timer(timeInterval: 0.2, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.tick()
             }
         }
+        timer.tolerance = 0.05
+        // `.common` keeps the clock moving while the menu bar panel tracks events.
+        RunLoop.main.add(timer, forMode: .common)
+        ticker = timer
     }
 
-    func stop() {
-        guard isRunning else { return }
-        accumulatedSeconds += elapsedSeconds
-        elapsedSeconds = 0
-        isRunning = false
-        timer?.invalidate()
-        timer = nil
-        startDate = nil
-    }
-
-    func reset() {
-        stop()
-        accumulatedSeconds = 0
-        elapsedSeconds = 0
-    }
-
-    func formattedTime() -> String {
-        let total = Int(accumulatedSeconds + elapsedSeconds)
-        let hours = total / 3600
-        let minutes = (total % 3600) / 60
-        let seconds = total % 60
-
-        if hours > 0 {
-            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
-        }
-        return String(format: "%02d:%02d", minutes, seconds)
+    private func stopTicker() {
+        ticker?.invalidate()
+        ticker = nil
     }
 
     private func tick() {
-        if let startDate = startDate {
-            elapsedSeconds = startDate.distance(to: Date())
-        }
+        guard session.isRunning else { return }
+        elapsedSeconds = session.elapsed(at: Date())
     }
 }
