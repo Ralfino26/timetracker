@@ -2,36 +2,40 @@
 
 A minimal macOS menu-bar timer that keeps a note with every session.
 
-Click the **clock** in the menu bar — a Liquid Glass panel opens. Start, stop, write down what you did. No Dock icon — just the menu bar. Runs in the background while you work.
+Click the **clock** in the menu bar — a Liquid Glass panel opens. Start, pause, save what you did. No Dock icon — just the menu bar. Opens at login after the first install.
 
 ## Requirements
 
 - macOS 26+
 - Xcode 26+ / Swift 6.2+ (`xcode-select --install`)
 
-## Run
+## Install & run
+
+Build a real `.app`, install it to `/Applications`, and launch (recommended — same pattern as Edge Todo):
 
 ```bash
-swift run
+./Scripts/run.sh
 ```
 
 Build only:
 
 ```bash
-swift build
-open .build/debug/Timetracker
+./Scripts/build.sh
+open .build/TimeTracker.app
 ```
 
-Release build:
+For a stable login item, keep the app in `/Applications` (what `./Scripts/run.sh` does).
+
+### Open at Login
+
+On first launch from `/Applications`, TimeTracker registers itself to start when you log in.
+
+Manage it under **System Settings → General → Login Items** (TimeTracker).
+
+## Development
 
 ```bash
-swift build -c release
-open .build/release/Timetracker
-```
-
-Tests:
-
-```bash
+swift run
 swift test
 ```
 
@@ -43,16 +47,11 @@ swift test
 4. From pause: **Resume** (green), **Save time** (blue) to log what you did, or the red trash to discard
 5. After **Save time**, type a note and press **Save** (or Return)
 
-A note is required when saving time. The menu bar icon pulses while running, shows
-pause while paused, and a pencil while a note is pending.
-
-
+A note is required when saving time. The menu bar icon pulses while running, shows pause while paused, and a pencil while a note is pending.
 
 ## History
 
-The calendar button in the panel opens the **History** window. It shows a month
-calendar with a dot under every day that has entries, and a table of that day's
-sessions with start, end, duration and note.
+The calendar button in the panel opens the **History** window. It shows a month calendar with a dot under every day that has entries, and a table of that day's sessions with start, end, duration and note.
 
 - Click a day to see its sessions and total
 - Click a note to edit it, then press Return
@@ -66,8 +65,7 @@ Entries are stored as a JSON array in:
 ~/Library/Application Support/TimeTracker/entries.json
 ```
 
-Writes are atomic, so an interrupted save cannot truncate the file. If the file is
-unreadable the app starts with an empty history instead of refusing to launch.
+Writes are atomic, so an interrupted save cannot truncate the file. If the file is unreadable the app starts with an empty history instead of refusing to launch.
 
 Set `TIMETRACKER_DATA_DIR` to store entries somewhere else — handy for testing:
 
@@ -77,20 +75,18 @@ TIMETRACKER_DATA_DIR=$(mktemp -d) swift run
 
 ## Structure
 
-| Path                       | Contents                                                     |
-| -------------------------- | ------------------------------------------------------------ |
+| Path | Contents |
+| ---- | -------- |
 | `Sources/TimetrackerCore/` | `WorkEntry`, `EntryStore`, `TimerSession` — no UI, fully tested |
-| `Timetracker/`             | SwiftUI app: menu bar panel, history window                  |
-| `Tests/TimetrackerCoreTests/` | Swift Testing suites for the timer state machine and storage |
+| `Timetracker/` | SwiftUI app: menu bar panel, history window, launch-at-login |
+| `Scripts/` | `build.sh` / `run.sh` — assemble and install `TimeTracker.app` |
+| `Tests/TimetrackerCoreTests/` | Swift Testing suites |
 
-`TimerSession` is a pure state machine (`idle → running ⇄ paused → logging → idle`)
-wrapped by `TimerManager`, which owns the tick timer and publishes the clock.
-
+`TimerSession` is a pure state machine (`idle → running ⇄ paused → logging → idle`) wrapped by `TimerManager`.
 
 ## Stack
 
-Native Swift + SwiftUI (`MenuBarExtra`, `Window`, `Table`). Liquid Glass
-(`glassEffect`, `.glass` / `.glassProminent`). No Electron, no dependencies.
+Native Swift + SwiftUI (`MenuBarExtra`, `Window`, `Table`) + `SMAppService` for login items. Liquid Glass (`glassEffect`, `.glass` / `.glassProminent`). No Electron, no dependencies.
 
 ## License
 
