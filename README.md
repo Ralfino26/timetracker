@@ -39,12 +39,16 @@ swift test
 
 1. Click the clock icon in the menu bar
 2. Press **Start** to begin tracking
-3. Press **Stop** to end the session — the panel asks what you worked on
-4. Type a note and press **Save** (or Return). **Discard** throws the session away
+3. Press **Pause** anytime — the clock freezes and you can **Resume**
+4. Press **Done** when the session is finished — the panel asks what you worked on
+5. Type a note and press **Save** (or Return). **Discard** throws the session away
 
-A note is required: an entry without one cannot be saved. There is no pause — a session is one uninterrupted stretch of time.
+A note is required: an entry without one cannot be saved. Pause does not create an
+entry; only **Done → Save** does.
 
-The menu bar icon pulses while the timer is running.
+The menu bar icon pulses while the timer is running, shows pause while paused, and
+a pencil while a note is pending.
+
 
 ## History
 
@@ -81,8 +85,9 @@ TIMETRACKER_DATA_DIR=$(mktemp -d) swift run
 | `Timetracker/`             | SwiftUI app: menu bar panel, history window                  |
 | `Tests/TimetrackerCoreTests/` | Swift Testing suites for the timer state machine and storage |
 
-`TimerSession` is a pure state machine (`idle → running → logging → idle`) wrapped by
-`TimerManager`, which owns the tick timer and publishes the clock.
+`TimerSession` is a pure state machine (`idle → running ⇄ paused → logging → idle`)
+wrapped by `TimerManager`, which owns the tick timer and publishes the clock.
+
 
 ## Stack
 
