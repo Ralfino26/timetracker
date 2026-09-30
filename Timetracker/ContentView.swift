@@ -3,6 +3,10 @@ import SwiftUI
 struct ContentView: View {
     @ObservedObject var timerManager = TimerManager.shared
     @Namespace private var glassNamespace
+    @State private var isPresented = false
+
+    private static let openCurve = Animation.spring(response: 0.28, dampingFraction: 0.88)
+
     private var time: String { timerManager.formattedTime() }
 
     var body: some View {
@@ -17,6 +21,16 @@ struct ContentView: View {
             .padding(.vertical, 18)
         }
         .frame(minWidth: 260, minHeight: 210, alignment: .top)
+        .opacity(isPresented ? 1 : 0)
+        .scaleEffect(isPresented ? 1 : 0.94, anchor: .top)
+        .offset(y: isPresented ? 0 : -8)
+        .background(WindowAccessor())
+        .onAppear {
+            withAnimation(Self.openCurve) { isPresented = true }
+        }
+        .onDisappear {
+            isPresented = false
+        }
     }
 
     private var header: some View {
