@@ -13,7 +13,9 @@ final class TimerManager: ObservableObject {
     private var ticker: Timer?
 
     var isRunning: Bool { session.isRunning }
+    var isPaused: Bool { session.isPaused }
     var isLogging: Bool { session.isLogging }
+    var hasActiveSession: Bool { session.hasActiveSession }
     var formattedTime: String { DurationFormat.clock(elapsedSeconds) }
 
     var pendingRange: (start: Date, end: Date)? { session.pendingRange }
@@ -24,8 +26,21 @@ final class TimerManager: ObservableObject {
         startTicker()
     }
 
-    func stop(at date: Date = Date()) {
-        guard session.stop(at: date) else { return }
+    func pause(at date: Date = Date()) {
+        guard session.pause(at: date) else { return }
+        stopTicker()
+        elapsedSeconds = session.elapsed(at: date)
+    }
+
+    func resume(at date: Date = Date()) {
+        guard session.resume(at: date) else { return }
+        elapsedSeconds = session.elapsed(at: date)
+        startTicker()
+    }
+
+    /// Ends the session and opens the note form.
+    func finish(at date: Date = Date()) {
+        guard session.finish(at: date) else { return }
         stopTicker()
         elapsedSeconds = session.elapsed(at: date)
     }
@@ -35,7 +50,7 @@ final class TimerManager: ObservableObject {
         resetToIdle()
     }
 
-    /// Note abandoned — the range is dropped.
+    /// Note abandoned or active session dropped.
     func discard() {
         resetToIdle()
     }

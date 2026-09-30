@@ -27,6 +27,14 @@ struct ContentView: View {
     private var stateChange: Animation? { reduceMotion ? nil : .bouncy }
     private var openAnimation: Animation? { reduceMotion ? nil : Self.openCurve }
 
+    /// MenuBarExtra windows often keep their first layout size; give the logging
+    /// form an explicit taller floor so Discard/Save are never clipped.
+    private var panelMinHeight: CGFloat {
+        if timerManager.isLogging { return 340 }
+        if timerManager.isPaused || timerManager.isRunning { return 250 }
+        return 210
+    }
+
     var body: some View {
         GlassEffectContainer(spacing: 18) {
             VStack(spacing: 14) {
@@ -43,12 +51,16 @@ struct ContentView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 18)
             .animation(stateChange, value: timerManager.isLogging)
+            .animation(stateChange, value: timerManager.isPaused)
         }
-        .frame(minWidth: 300, minHeight: 210, alignment: .top)
+        .frame(width: 300, alignment: .top)
+        .frame(minHeight: panelMinHeight, alignment: .top)
+        .fixedSize(horizontal: true, vertical: true)
         .opacity(isPresented ? 1 : 0)
         .scaleEffect(isPresented ? 1 : 0.94, anchor: .top)
         .offset(y: isPresented ? 0 : -8)
-        .background(WindowAccessor())
+        .background(WindowAccessor(contentHeight: panelMinHeight))
+        .animation(stateChange, value: panelMinHeight)
         .onAppear {
             withAnimation(openAnimation) { isPresented = true }
             noteFieldFocused = timerManager.isLogging
@@ -86,7 +98,7 @@ struct ContentView: View {
         Text(time)
             .font(.system(size: 34, weight: .medium, design: .rounded))
             .monospacedDigit()
-            .foregroundStyle(timerManager.isLogging ? .secondary : .primary)
+            .foregroundStyle(timerManager.isLogging || timerManager.isPaused ? .secondary : .primary)
             .contentTransition(.numericText())
             .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: time)
             .padding(.vertical, 12)
@@ -99,30 +111,72 @@ struct ContentView: View {
         HStack(spacing: 7) {
             Image(systemName: "circle.fill")
                 .font(.system(size: 7))
-                .foregroundStyle(timerManager.isRunning ? .green : .secondary)
+                .foregroundStyle(statusDotColor)
                 .symbolEffect(.pulse, isActive: timerManager.isRunning && !reduceMotion)
 
-            Text(timerManager.isRunning ? "Tracking in background" : "Press start to begin")
+            Text(statusText)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .contentTransition(.opacity)
         }
         .animation(reduceMotion ? nil : .smooth, value: timerManager.isRunning)
+        .animation(reduceMotion ? nil : .smooth, value: timerManager.isPaused)
         .transition(.opacity)
+    }
+
+    private var statusDotColor: Color {
+        if timerManager.isRunning { return .green }
+        if timerManager.isPaused { return .orange }
+        return .secondary
+    }
+
+    private var statusText: String {
+        if timerManager.isRunning { return "Tracking in background" }
+        if timerManager.isPaused { return "Paused — resume or done" }
+        return "Press start to begin"
     }
 
     private var controls: some View {
         HStack(spacing: 10) {
             if timerManager.isRunning {
                 Button {
-                    withAnimation(stateChange) { timerManager.stop() }
+                    withAnimation(stateChange) { timerManager.pause() }
                 } label: {
-                    Label("Stop", systemImage: "stop.fill")
+                    Label("Pause", systemImage: "pause.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glass)
+                .glassEffectID("secondary", in: glassNamespace)
+
+                Button {
+                    withAnimation(stateChange) { timerManager.finish() }
+                } label: {
+                    Label("Done", systemImage: "checkmark")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.glassProminent)
-                .tint(.red)
+                .tint(.accentColor)
                 .glassEffectID("primary", in: glassNamespace)
+            } else if timerManager.isPaused {
+                Button {
+                    withAnimation(stateChange) { timerManager.resume() }
+                } label: {
+                    Label("Resume", systemImage: "play.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glassProminent)
+                .tint(.green)
+                .glassEffectID("primary", in: glassNamespace)
+
+                Button {
+                    withAnimation(stateChange) { timerManager.finish() }
+                } label: {
+                    Label("Done", systemImage: "checkmark")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glass)
+                .glassEffectID("secondary", in: glassNamespace)
+                .glassEffectTransition(.materialize)
             } else {
                 Button {
                     withAnimation(stateChange) { timerManager.start() }
@@ -138,6 +192,7 @@ struct ContentView: View {
         .controlSize(.large)
         .buttonBorderShape(.capsule)
         .animation(stateChange, value: timerManager.isRunning)
+        .animation(stateChange, value: timerManager.isPaused)
         .transition(.opacity)
     }
 
@@ -186,6 +241,8 @@ struct ContentView: View {
             }
             .controlSize(.large)
             .buttonBorderShape(.capsule)
+            .frame(minHeight: 36)
+            .layoutPriority(1)
             .animation(stateChange, value: canSave)
 
             if let message = store.lastErrorMessage {

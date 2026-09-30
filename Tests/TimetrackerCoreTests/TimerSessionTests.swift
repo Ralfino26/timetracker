@@ -12,6 +12,7 @@ struct TimerSessionTests {
 
         #expect(session.state == .idle)
         #expect(session.isRunning == false)
+        #expect(session.isPaused == false)
         #expect(session.isLogging == false)
         #expect(session.pendingRange == nil)
         #expect(session.elapsed(at: start) == 0)
@@ -22,7 +23,6 @@ struct TimerSessionTests {
         var session = TimerSession()
 
         #expect(session.start(at: start) == true)
-        #expect(session.state == .running(since: start))
         #expect(session.isRunning == true)
         #expect(session.elapsed(at: start.addingTimeInterval(90)) == 90)
     }
@@ -33,65 +33,91 @@ struct TimerSessionTests {
         session.start(at: start)
 
         #expect(session.start(at: start.addingTimeInterval(60)) == false)
-        #expect(session.state == .running(since: start))
+        #expect(session.isRunning == true)
+        #expect(session.elapsed(at: start.addingTimeInterval(60)) == 60)
     }
 
-    @Test("Stopping moves running to logging and freezes the clock")
-    func stopFromRunning() {
+    @Test("Pausing freezes the clock and resume continues from there")
+    func pauseAndResume() {
+        var session = TimerSession()
+        session.start(at: start)
+        let pauseAt = start.addingTimeInterval(40)
+
+        #expect(session.pause(at: pauseAt) == true)
+        #expect(session.isPaused == true)
+        #expect(session.isRunning == false)
+        #expect(session.elapsed(at: pauseAt.addingTimeInterval(100)) == 40)
+
+        let resumeAt = pauseAt.addingTimeInterval(20)
+        #expect(session.resume(at: resumeAt) == true)
+        #expect(session.isRunning == true)
+        #expect(session.elapsed(at: resumeAt.addingTimeInterval(15)) == 55)
+    }
+
+    @Test("Finish from running opens logging with the full session range")
+    func finishFromRunning() {
         var session = TimerSession()
         session.start(at: start)
         let end = start.addingTimeInterval(125)
 
-        #expect(session.stop(at: end) == true)
+        #expect(session.finish(at: end) == true)
         #expect(session.state == .logging(start: start, end: end))
-        #expect(session.isRunning == false)
         #expect(session.isLogging == true)
-        #expect(session.pendingRange?.start == start)
-        #expect(session.pendingRange?.end == end)
         #expect(session.elapsed(at: end.addingTimeInterval(500)) == 125)
     }
 
-    @Test("Stopping is ignored when not running")
-    func stopRequiresRunning() {
+    @Test("Finish from paused keeps paused elapsed and original start")
+    func finishFromPaused() {
+        var session = TimerSession()
+        session.start(at: start)
+        session.pause(at: start.addingTimeInterval(50))
+
+        #expect(session.finish(at: start.addingTimeInterval(80)) == true)
+        #expect(session.pendingRange?.start == start)
+        #expect(session.pendingRange?.end == start.addingTimeInterval(50))
+        #expect(session.elapsed(at: start) == 50)
+    }
+
+    @Test("Pause and finish are ignored in the wrong state")
+    func invalidTransitions() {
         var idle = TimerSession()
-        #expect(idle.stop(at: start) == false)
-        #expect(idle.state == .idle)
+        #expect(idle.pause(at: start) == false)
+        #expect(idle.resume(at: start) == false)
+        #expect(idle.finish(at: start) == false)
+
+        var running = TimerSession()
+        running.start(at: start)
+        #expect(running.resume(at: start) == false)
 
         var logging = TimerSession()
         logging.start(at: start)
-        logging.stop(at: start.addingTimeInterval(10))
-        let stateBefore = logging.state
-
-        #expect(logging.stop(at: start.addingTimeInterval(20)) == false)
-        #expect(logging.state == stateBefore)
+        logging.finish(at: start.addingTimeInterval(10))
+        let before = logging.state
+        #expect(logging.pause(at: start.addingTimeInterval(20)) == false)
+        #expect(logging.finish(at: start.addingTimeInterval(20)) == false)
+        #expect(logging.state == before)
     }
 
-    @Test("Starting is ignored while a note is pending")
-    func startIgnoredWhileLogging() {
-        var session = TimerSession()
-        session.start(at: start)
-        session.stop(at: start.addingTimeInterval(10))
+    @Test("Starting is ignored while paused or logging")
+    func startIgnoredWhileActive() {
+        var paused = TimerSession()
+        paused.start(at: start)
+        paused.pause(at: start.addingTimeInterval(10))
+        #expect(paused.start(at: start.addingTimeInterval(20)) == false)
+        #expect(paused.isPaused == true)
 
-        #expect(session.start(at: start.addingTimeInterval(20)) == false)
-        #expect(session.isLogging == true)
-    }
-
-    @Test("A stop date before the start date clamps to a zero-length range")
-    func stopClampsToStart() {
-        var session = TimerSession()
-        session.start(at: start)
-
-        session.stop(at: start.addingTimeInterval(-60))
-
-        #expect(session.state == .logging(start: start, end: start))
-        #expect(session.elapsed(at: start) == 0)
+        var logging = TimerSession()
+        logging.start(at: start)
+        logging.finish(at: start.addingTimeInterval(10))
+        #expect(logging.start(at: start.addingTimeInterval(20)) == false)
+        #expect(logging.isLogging == true)
     }
 
     @Test("Discarding returns to idle from any state")
     func discardReturnsToIdle() {
         var session = TimerSession()
         session.start(at: start)
-        session.stop(at: start.addingTimeInterval(30))
+        session.pause(at: start.addingTimeInterval(30))
 
         session.discard()
 
@@ -104,7 +130,7 @@ struct TimerSessionTests {
         var session = TimerSession()
         session.start(at: start)
         let end = start.addingTimeInterval(45)
-        session.stop(at: end)
+        session.finish(at: end)
 
         let entry = try #require(session.makeEntry(note: "  Wrote tests \n"))
 
@@ -122,17 +148,22 @@ struct TimerSessionTests {
         session.start(at: start)
         #expect(session.makeEntry(note: "Running work") == nil)
 
-        session.stop(at: start.addingTimeInterval(10))
+        session.pause(at: start.addingTimeInterval(10))
+        #expect(session.makeEntry(note: "Paused work") == nil)
+
+        session.finish(at: start.addingTimeInterval(10))
         #expect(session.makeEntry(note: "") == nil)
         #expect(session.makeEntry(note: "   \n\t ") == nil)
         #expect(session.makeEntry(note: "Real work") != nil)
     }
 
-    @Test("A full cycle ends back at idle")
+    @Test("A full pause-resume-finish cycle ends back at idle")
     func fullCycle() {
         var session = TimerSession()
         session.start(at: start)
-        session.stop(at: start.addingTimeInterval(60))
+        session.pause(at: start.addingTimeInterval(20))
+        session.resume(at: start.addingTimeInterval(30))
+        session.finish(at: start.addingTimeInterval(50))
         _ = session.makeEntry(note: "Done")
         session.discard()
 

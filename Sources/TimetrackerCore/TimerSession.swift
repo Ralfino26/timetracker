@@ -3,14 +3,18 @@ import Foundation
 /// Pure state machine behind the timer. Holds no timers and no storage, so every
 /// transition is directly testable.
 ///
-/// `idle → running → logging → idle`
+/// `idle → running ⇄ paused → logging → idle`
 public struct TimerSession: Equatable, Sendable {
     public enum State: Equatable, Sendable {
         /// Nothing tracked, waiting for a start.
         case idle
-        /// Tracking since the given date.
-        case running(since: Date)
-        /// Stopped; waiting for the note that turns the range into a `WorkEntry`.
+        /// Tracking. `sessionStart` is when the user first pressed Start;
+        /// `segmentStart` is when the current running stretch began;
+        /// `priorElapsed` is time already banked from earlier pauses.
+        case running(sessionStart: Date, segmentStart: Date, priorElapsed: TimeInterval)
+        /// Paused with time on the clock. Resume continues; finish logs.
+        case paused(sessionStart: Date, elapsed: TimeInterval)
+        /// Finished; waiting for the note that turns the range into a `WorkEntry`.
         case logging(start: Date, end: Date)
     }
 
@@ -25,9 +29,22 @@ public struct TimerSession: Equatable, Sendable {
         return false
     }
 
+    public var isPaused: Bool {
+        if case .paused = state { return true }
+        return false
+    }
+
     public var isLogging: Bool {
         if case .logging = state { return true }
         return false
+    }
+
+    /// True when a session is in progress (running or paused) and can be finished.
+    public var hasActiveSession: Bool {
+        switch state {
+        case .running, .paused: return true
+        case .idle, .logging: return false
+        }
     }
 
     /// The range waiting for a note, if any.
@@ -36,13 +53,15 @@ public struct TimerSession: Equatable, Sendable {
         return nil
     }
 
-    /// Seconds on the clock: live while running, frozen while logging, zero when idle.
+    /// Seconds on the clock: live while running, frozen while paused/logging, zero when idle.
     public func elapsed(at date: Date) -> TimeInterval {
         switch state {
         case .idle:
             return 0
-        case let .running(since):
-            return max(0, date.timeIntervalSince(since))
+        case let .running(_, segmentStart, priorElapsed):
+            return max(0, priorElapsed + date.timeIntervalSince(segmentStart))
+        case let .paused(_, elapsed):
+            return max(0, elapsed)
         case let .logging(start, end):
             return max(0, end.timeIntervalSince(start))
         }
@@ -52,19 +71,53 @@ public struct TimerSession: Equatable, Sendable {
     @discardableResult
     public mutating func start(at date: Date = Date()) -> Bool {
         guard case .idle = state else { return false }
-        state = .running(since: date)
+        state = .running(sessionStart: date, segmentStart: date, priorElapsed: 0)
         return true
     }
 
-    /// Ends tracking and moves to note entry. Returns `false` when not running.
+    /// Pauses a running session. Returns `false` when not running.
     @discardableResult
-    public mutating func stop(at date: Date = Date()) -> Bool {
-        guard case let .running(since) = state else { return false }
-        state = .logging(start: since, end: max(since, date))
+    public mutating func pause(at date: Date = Date()) -> Bool {
+        guard case let .running(sessionStart, segmentStart, priorElapsed) = state else {
+            return false
+        }
+        let elapsed = max(0, priorElapsed + date.timeIntervalSince(segmentStart))
+        state = .paused(sessionStart: sessionStart, elapsed: elapsed)
         return true
     }
 
-    /// Throws the pending range away and returns to idle.
+    /// Continues a paused session. Returns `false` when not paused.
+    @discardableResult
+    public mutating func resume(at date: Date = Date()) -> Bool {
+        guard case let .paused(sessionStart, elapsed) = state else { return false }
+        state = .running(
+            sessionStart: sessionStart,
+            segmentStart: date,
+            priorElapsed: elapsed
+        )
+        return true
+    }
+
+    /// Ends the session and moves to note entry from running or paused.
+    /// Returns `false` when there is nothing to finish.
+    @discardableResult
+    public mutating func finish(at date: Date = Date()) -> Bool {
+        switch state {
+        case let .running(sessionStart, segmentStart, priorElapsed):
+            let elapsed = max(0, priorElapsed + date.timeIntervalSince(segmentStart))
+            let end = sessionStart.addingTimeInterval(elapsed)
+            state = .logging(start: sessionStart, end: max(sessionStart, end))
+            return true
+        case let .paused(sessionStart, elapsed):
+            let end = sessionStart.addingTimeInterval(max(0, elapsed))
+            state = .logging(start: sessionStart, end: max(sessionStart, end))
+            return true
+        case .idle, .logging:
+            return false
+        }
+    }
+
+    /// Throws the pending range (or active session) away and returns to idle.
     public mutating func discard() {
         state = .idle
     }

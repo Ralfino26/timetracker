@@ -8,6 +8,7 @@ struct TimetrackerApp: App {
 
     private var menuBarSymbol: String {
         if timerManager.isLogging { return "pencil.circle.fill" }
+        if timerManager.isPaused { return "pause.circle.fill" }
         if timerManager.isRunning { return "record.circle.fill" }
         return "clock"
     }
