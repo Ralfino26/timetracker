@@ -39,15 +39,13 @@ swift test
 
 1. Click the clock icon in the menu bar
 2. Press **Start** to begin tracking
-3. Press **Pause** anytime — the clock freezes and you can **Resume**
-4. Press **Done** when the session is finished — the panel asks what you worked on
-5. Type a note and press **Save** (or Return). **Discard** throws the session away
+3. Press **Pause** to freeze the clock
+4. From pause: **Resume** (green), **Save time** (blue) to log what you did, or the red trash to discard
+5. After **Save time**, type a note and press **Save** (or Return)
 
-A note is required: an entry without one cannot be saved. Pause does not create an
-entry; only **Done → Save** does.
+A note is required when saving time. The menu bar icon pulses while running, shows
+pause while paused, and a pencil while a note is pending.
 
-The menu bar icon pulses while the timer is running, shows pause while paused, and
-a pencil while a note is pending.
 
 
 ## History
