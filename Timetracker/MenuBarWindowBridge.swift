@@ -2,36 +2,48 @@ import AppKit
 import SwiftUI
 
 /// Bridges the SwiftUI content of the menu bar panel to its hosting `NSWindow` so the
-/// panel can fade out the way system menus do, and so it grows when the logging form
-/// appears. `MenuBarExtra` often keeps its first content size unless AppKit is told.
+/// panel can fade out the way system menus do, and so it tracks the content height
+/// when Pause / Done / logging form change the layout.
 struct WindowAccessor: NSViewRepresentable {
-    var contentHeight: CGFloat = 210
     var contentWidth: CGFloat = 300
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
+        let view = FittingView()
+        view.onLayout = { [weak coordinator = context.coordinator] in
+            coordinator?.resizeIfNeeded()
+        }
         DispatchQueue.main.async { context.coordinator.attach(to: view.window) }
         return view
     }
 
     func updateNSView(_ view: NSView, context: Context) {
         context.coordinator.contentWidth = contentWidth
-        context.coordinator.contentHeight = contentHeight
         context.coordinator.attach(to: view.window)
-        context.coordinator.resizeIfNeeded()
+        DispatchQueue.main.async {
+            context.coordinator.resizeIfNeeded()
+        }
     }
 
     static func dismantleNSView(_ view: NSView, coordinator: Coordinator) {
         coordinator.detach()
     }
 
+    /// Reports layout changes so the panel can shrink when content gets shorter.
+    private final class FittingView: NSView {
+        var onLayout: (() -> Void)?
+
+        override func layout() {
+            super.layout()
+            onLayout?()
+        }
+    }
+
     final class Coordinator {
         private weak var window: NSWindow?
         private var observers: [NSObjectProtocol] = []
         var contentWidth: CGFloat = 300
-        var contentHeight: CGFloat = 210
 
         func attach(to window: NSWindow?) {
             guard let window else { return }
@@ -72,18 +84,17 @@ struct WindowAccessor: NSViewRepresentable {
         }
 
         func resizeIfNeeded() {
-            guard let window else { return }
+            guard let window, let contentView = window.contentView else { return }
 
-            var target = NSSize(width: contentWidth, height: contentHeight)
-            if let contentView = window.contentView {
-                let fitting = contentView.fittingSize
-                if fitting.width.isFinite, fitting.width > 0 {
-                    target.width = max(contentWidth, fitting.width)
-                }
-                if fitting.height.isFinite, fitting.height > 0 {
-                    target.height = max(contentHeight, fitting.height)
-                }
-            }
+            let fitting = contentView.fittingSize
+            guard fitting.width.isFinite, fitting.height.isFinite,
+                  fitting.width > 0, fitting.height > 0
+            else { return }
+
+            let target = NSSize(
+                width: max(contentWidth, fitting.width),
+                height: fitting.height
+            )
 
             let current = window.contentLayoutRect.size
             guard abs(current.width - target.width) > 0.5
@@ -91,7 +102,7 @@ struct WindowAccessor: NSViewRepresentable {
             else { return }
 
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.22
+                context.duration = 0.2
                 context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 window.animator().setContentSize(target)
             }
